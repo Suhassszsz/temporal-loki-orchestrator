@@ -1,4 +1,3 @@
-# src/interceptors/workflow_interceptor.py
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.worker import Interceptor, WorkflowInboundInterceptor

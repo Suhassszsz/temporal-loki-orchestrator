@@ -1,4 +1,3 @@
-# src/activities/logging_activity.py
 from temporalio import activity
 from src.logger import get_custom_logger
 
@@ -15,17 +14,10 @@ async def log_workflow_event(
     Activity that logs workflow lifecycle events.
     Logs are structured JSON and flow to both console and Loki.
     """
-
     logger = get_custom_logger("workflow-event")
 
-    log_record = {
-        "workflow_id": workflow_id,
-        "run_id": run_id,
-        "workflow_type": workflow_type,
-        "status": status,
-        "message": message,
-    }
-
-    logger.info(log_record)
+    # Cleaner: workflow_id is automatically added by logger
+    msg = f"Workflow event: status={status} workflow_type={workflow_type} run_id={run_id} message={message}"
+    logger.info(msg)
 
     return f"Logged {status} for {workflow_type} ({workflow_id})"

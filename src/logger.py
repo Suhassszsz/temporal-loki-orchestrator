@@ -1,4 +1,3 @@
-# src/logger.py
 import logging
 import json
 import time
@@ -8,13 +7,27 @@ from temporalio import workflow, activity
 # ---------- FORMATTER ----------
 class JSONFormatter(logging.Formatter):
     def format(self, record):
+        # Prepare message text — handle dict messages cleanly
+        raw_msg = record.getMessage()
+        if isinstance(raw_msg, dict):
+            try:
+                message_text = json.dumps(raw_msg)
+            except Exception:
+                message_text = str(raw_msg)
+        else:
+            message_text = str(raw_msg)
+
         log_data = {
             "timestamp": self.formatTime(record),
             "level": record.levelname,
-            "message": record.getMessage(),
+            "message": message_text,
         }
-        if hasattr(record, "workflow_id"):
-            log_data["workflow_id"] = record.workflow_id
+
+        # Add workflow_id as a structured field (not inside message text)
+        workflow_id = getattr(record, "workflow_id", None)
+        if workflow_id and workflow_id != "N/A":
+            log_data["workflow_id"] = workflow_id
+
         return json.dumps(log_data)
 
 # ---------- FILTERS ----------
@@ -32,7 +45,7 @@ class ActivityFilter(logging.Filter):
 class WorkflowFilter(logging.Filter):
     def filter(self, record):
         try:
-            # workflow.in_workflow() is safe when called outside sandbox (in activities)
+            # workflow.in_workflow() can raise in non-workflow contexts
             if workflow.in_workflow():
                 info = workflow.info()
                 record.workflow_id = info.workflow_id
@@ -48,16 +61,13 @@ class LokiHTTPHandler(logging.Handler):
     def __init__(self, url, tags=None):
         super().__init__()
         self.url = url
-        self.tags = tags or {"app": "temporal-worker", "workflow_id": "N/A"}
+        # Important: do NOT include workflow_id here — tags are static labels for Loki streams
+        self.tags = tags or {"app": "temporal-worker"}
 
     def emit(self, record):
         try:
-            # Base stream labels
+            # Base stream labels (no workflow_id label)
             stream_labels = {**self.tags, "level": record.levelname.lower()}
-
-            # Add workflow_id dynamically (if available)
-            if hasattr(record, "workflow_id") and record.workflow_id and record.workflow_id != "N/A":
-                stream_labels["workflow_id"] = record.workflow_id
 
             log_entry = {
                 "streams": [
@@ -98,6 +108,7 @@ def get_custom_logger(name=__name__):
 
         class FilterGroup(logging.Filter):
             def filter(self, record):
+                # Apply both filters (they each set record.workflow_id appropriately)
                 return activity_filter.filter(record) and workflow_filter.filter(record)
 
         # Loki handler: note URL points to docker-compose service name "loki"
@@ -112,6 +123,7 @@ def get_custom_logger(name=__name__):
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(JSONFormatter())
+        console_handler.addFilter(FilterGroup())
 
         logger.addHandler(console_handler)
         logger.addHandler(loki_handler)

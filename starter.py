@@ -1,4 +1,3 @@
-# starter.py (project root)
 import asyncio
 from temporalio.client import Client
 from src.workflows.my_workflow import MyWorkflow
@@ -7,27 +6,36 @@ from src.workflows.another_workflow import AnotherWorkflow
 async def main():
     client = await Client.connect("temporal:7233")
 
-    # Start two workflows in parallel with distinct workflow IDs
-    handle1 = await client.start_workflow(
-        MyWorkflow.run,
-        "Alice",
-        id="wf-my-alice",
-        task_queue="my-task-queue",
-    )
+    handles = []
 
-    handle2 = await client.start_workflow(
-        AnotherWorkflow.run,
-        id="wf-another-bob",
-        task_queue="my-task-queue",
-    )
+    # Start multiple instances of the same workflow type (homogeneous) to simulate concurrency
+    for i, name in enumerate(["Alice", "Bob", "Carol"], start=1):
+        wf_id = f"wf-my-{i}"
+        handle = await client.start_workflow(
+            MyWorkflow.run,
+            name,
+            id=wf_id,
+            task_queue="my-task-queue",
+        )
+        handles.append(handle)
+        print(f"started {wf_id}")
 
-    print(f"started {handle1.id} / {handle2.id}")
+    # Start a couple of AnotherWorkflow instances too
+    for i in range(1, 3):
+        wf_id = f"wf-another-{i}"
+        handle = await client.start_workflow(
+            AnotherWorkflow.run,
+            id=wf_id,
+            task_queue="my-task-queue",
+        )
+        handles.append(handle)
+        print(f"started {wf_id}")
 
-    # Optionally wait for results:
-    res1 = await handle1.result()
-    res2 = await handle2.result()
-    print("res1:", res1)
-    print("res2:", res2)
+    # Wait for all workflows to complete concurrently
+    results = await asyncio.gather(*(h.result() for h in handles), return_exceptions=True)
+
+    for h, res in zip(handles, results):
+        print(f"{h.id} -> {res}")
 
 if __name__ == "__main__":
     asyncio.run(main())

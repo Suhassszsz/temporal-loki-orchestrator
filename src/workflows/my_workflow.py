@@ -1,4 +1,3 @@
-# src/workflows/my_workflow.py
 from datetime import timedelta
 from temporalio import workflow
 
@@ -9,11 +8,12 @@ logger = workflow.logger
 class MyWorkflow:
     @workflow.run
     async def run(self, name: str) -> str:
-        logger.info("MyWorkflow started", extra={"workflow_id": workflow.info().workflow_id})
+        info = workflow.info()
+        logger.info(f"MyWorkflow started with {info.workflow_id}")
         result = await workflow.execute_activity(
             "shared_activity",   # string name registered by activity.defn
             name,
-            schedule_to_close_timeout=timedelta(seconds=10),
+            schedule_to_close_timeout=timedelta(seconds=20),
         )
-        logger.info("MyWorkflow finished", extra={"workflow_id": workflow.info().workflow_id})
+        logger.info(f"MyWorkflow finished with {info.workflow_id}")
         return result
